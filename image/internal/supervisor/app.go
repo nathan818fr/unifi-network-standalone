@@ -77,7 +77,9 @@ func beforeAppStart(ctx context.Context) (restoring bool, err error) {
 		return false, err
 	}
 	if !hasAdmins {
-		return false, nil
+		// A restore from the setup page: nothing to keep yet, but the users may need the repair.
+		_, err := os.Stat(store.RestorePending)
+		return err == nil, nil
 	}
 	if err := keepMigratorVersion(); err != nil {
 		return false, err
