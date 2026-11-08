@@ -225,14 +225,19 @@ func prepareCoreStub(ctx context.Context) (*coreStub, error) {
 	}
 	stub := &coreStub{system: systemJSON(id, strings.TrimSpace(string(version))), log: os.Stdout}
 	ip, from, err := hostIP(ctx)
-	switch {
-	case err != nil:
-		log.Printf("unifi-standalone: could not read the host address: %v", err)
-	case ip == "":
-		log.Printf("unifi-standalone: the host address is not known: set UNIFI_HOST_IP, or Inform Host Override")
-	default:
+	if ip != "" {
 		log.Printf("unifi-standalone: the host address is %s, from %s", ip, from)
 		stub.interfaces = interfacesJSON(ip)
+		return stub, nil
+	}
+	hint := "set UNIFI_HOST_IP, or Inform Host Override in Network's settings"
+	if os.Getenv("SUPERVISOR_TOKEN") != "" {
+		hint = "set Inform Host Override in Network's settings, then restart the app"
+	}
+	if err != nil {
+		log.Printf("unifi-standalone: could not read the host address (%v): %s", err, hint)
+	} else {
+		log.Printf("unifi-standalone: the host address is not known: %s", hint)
 	}
 	return stub, nil
 }
