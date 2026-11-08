@@ -1,0 +1,97 @@
+# UniFi Network as UniFi OS Server starts it, without its other services: the app, a small stand-in
+# for unifi-core, Java, Postgres and (for migrations) MongoDB.
+
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27.3@sha256:e519d3b0a5b285e5aa53ab9eef02bc6bbb9cb04608389b743a136a9ce75f0d1e AS build
+ARG TARGETARCH
+WORKDIR /src
+COPY go.mod ./
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 GOARCH=$TARGETARCH go build -trimpath -ldflags='-s -w' \
+  -o /build/unifi-standalone ./cmd/unifi-standalone
+
+# Downloads run natively, whatever the target architecture.
+FROM --platform=$BUILDPLATFORM docker.io/library/debian:trixie-20261104-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS fetch
+# Ubiquiti's feed lists the same .deb under uos-deb13-amd64 and uos-deb13-arm64.
+ARG UNIFI_VERSION=11.0.99
+ARG UNIFI_DEB_URL=https://fw-download.ubnt.com/data/unifi/c11a-uos-deb13-amd64-11.0.99-37236-1-846bfcb2-6633-4f0c-8a93-4bff501748b2.deb
+ARG UNIFI_DEB_SHA256=ebf4143ef67ce4c735b6739b2c41dc63e7519240cb465cd920f4b31d39e46a9d
+# A newer Debian snapshot than the base image's, such as 20261112T000000Z, for a fix that can't wait
+# for Debian's next base image. It stops mattering once the base image is newer.
+ARG DEBIAN_SNAPSHOT_MIN=
+COPY fetch.sh /build/
+COPY apt/99build /etc/apt/apt.conf.d/99build
+# apt reaches the snapshot over HTTPS, and this image has no CA certificates yet.
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+# Freezes apt at the snapshot the base image comes from, so that its digest pins every Debian package,
+# indirect ones included. An empty date would silently leave apt on today's packages.
+# hadolint ignore=DL4006
+RUN base="$(sed -nE 's|^# http://snapshot\.debian\.org/archive/debian/([0-9T]+Z)$|\1|p' \
+    /etc/apt/sources.list.d/debian.sources)" \
+  && printf '%s\n' "$base" | grep -qE '^[0-9]{8}T[0-9]{6}Z$' \
+  && printf '%s\n' "$DEBIAN_SNAPSHOT_MIN" | grep -qE '^([0-9]{8}T[0-9]{6}Z)?$' \
+  && snapshot="$(printf '%s\n%s\n' "$base" "$DEBIAN_SNAPSHOT_MIN" | sort | tail -n 1)" \
+  && printf 'APT::Snapshot "%s";\n' "$snapshot" >>/etc/apt/apt.conf.d/99build \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends binutils ca-certificates curl unzip xz-utils \
+  && /build/fetch.sh
+
+FROM docker.io/library/eclipse-temurin:25.0.5_8-jre@sha256:ecdc0adb37bde1a281c4d245a3cd535004b1fc8322d560f5b09463b248c81df0 AS java
+
+# Same major version as UniFi OS, only used to migrate old backups: never reachable from outside, and
+# its build for arm64 needs this old OpenSSL, which Debian 13 no longer has. 5.0 and later can't run
+# on a Raspberry Pi 4.
+FROM docker.io/library/mongo:3.6.23@sha256:146c1fd999a660e697aac40bc6da842b005c7868232eb0b7d8996c8f3545b05d AS mongo
+
+FROM docker.io/library/debian:trixie-20261104-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
+ARG POSTGRES_MAJOR=18
+# PGDG's packages aren't in Debian's snapshots. All of these must move together, and libpq5 would
+# otherwise follow PGDG's next major version.
+ARG POSTGRES_VERSION=18.6-1.pgdg13+2
+ARG POSTGRES_COMMON_VERSION=293.pgdg13+1
+COPY --from=fetch /etc/apt/apt.conf.d/99build /etc/apt/apt.conf.d/99build
+COPY --from=fetch /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY apt/pgdg.asc /usr/share/postgresql-common/pgdg/pgdg.asc
+COPY apt/pgdg.sources /etc/apt/sources.list.d/pgdg.sources
+COPY apt/createcluster.conf /etc/postgresql-common/createcluster.conf
+RUN groupadd --gid 1000 unifi \
+  && useradd --uid 1000 --gid unifi --home-dir /data --no-create-home --shell /usr/sbin/nologin unifi \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates openssl tini \
+    "postgresql-${POSTGRES_MAJOR}=${POSTGRES_VERSION}" \
+    "postgresql-client-${POSTGRES_MAJOR}=${POSTGRES_VERSION}" \
+    "libpq5=${POSTGRES_VERSION}" \
+    "postgresql-common=${POSTGRES_COMMON_VERSION}" \
+    "postgresql-client-common=${POSTGRES_COMMON_VERSION}" \
+  && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+
+COPY --from=java /opt/java/openjdk /opt/java
+COPY --from=fetch /build/out/unifi /opt/unifi
+COPY --from=mongo /usr/bin/mongod /opt/mongodb/bin/mongod
+COPY --from=mongo /lib/*-linux-gnu/libssl.so.1.0.0 /lib/*-linux-gnu/libcrypto.so.1.0.0 /opt/mongodb/lib/
+COPY --from=build /build/unifi-standalone /opt/unifi-standalone/bin/unifi-standalone
+COPY --from=fetch /build/out/logback.xml /opt/unifi-standalone/logback.xml
+COPY --from=fetch /build/out/core-version /opt/unifi-standalone/core-version
+COPY --from=fetch /build/out/java-major /tmp/java-major
+# A build must fail if Network asks for another Java. The package's folders move out of the read-only
+# code, as its install script does.
+RUN grep -q "^JAVA_VERSION=\"$(cat /tmp/java-major)\." /opt/java/release \
+  && rm /tmp/java-major \
+  && echo /opt/mongodb/lib >/etc/ld.so.conf.d/mongodb.conf \
+  && ldconfig \
+  && ln -s unifi-standalone /opt/unifi-standalone/bin/unifi-users \
+  && ln -s unifi-standalone /opt/unifi-standalone/bin/unifi-export \
+  && ln -s unifi-standalone /opt/unifi-standalone/bin/unifi-backup \
+  && ln -s unifi-standalone /opt/unifi-standalone/bin/sudo \
+  && ln -s /data/unifi/data /opt/unifi/data \
+  && ln -s /data/unifi/logs /opt/unifi/logs \
+  && ln -s /run/unifi /opt/unifi/run
+
+ENV PATH=/opt/unifi-standalone/bin:/usr/lib/postgresql/${POSTGRES_MAJOR}/bin:/opt/java/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+LABEL org.opencontainers.image.source="https://github.com/nathan818fr/unifi-network-standalone"
+VOLUME /data
+EXPOSE 8443/tcp 8080/tcp 8880/tcp 8843/tcp 3478/udp
+HEALTHCHECK --start-period=10m --interval=1m --timeout=10s \
+  CMD ["/opt/unifi-standalone/bin/unifi-standalone", "healthcheck"]
+# tini reaps what ends up orphaned here, such as a daemonized MongoDB.
+ENTRYPOINT ["/usr/bin/tini", "--", "/opt/unifi-standalone/bin/unifi-standalone", "run"]

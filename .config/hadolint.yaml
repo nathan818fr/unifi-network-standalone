@@ -1,0 +1,4 @@
+ignored:
+  # Debian's packages are frozen by the snapshot of the pinned base image, not one by one: Debian only
+  # keeps the latest versions, so such pins would break the build at each update.
+  - DL3008

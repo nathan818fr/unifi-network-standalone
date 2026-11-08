@@ -1,0 +1,54 @@
+name: UniFi Network (standalone)
+description: Latest UniFi Network application, without UniFi OS. Unofficial and unsupported.
+url: https://github.com/nathan818fr/unifi-network-standalone
+# The image's tag.
+version: "11.0.99-build1"
+slug: unifi_network_standalone
+image: ghcr.io/nathan818fr/unifi-network-standalone
+arch:
+  - aarch64
+  - amd64
+startup: application
+boot: auto
+# The image has its own main process
+init: false
+# Only to read the host's address (/network/info), which devices are then told to use
+hassio_api: true
+webui: https://[HOST]:[PORT:8443]
+watchdog: tcp://[HOST]:[PORT:8443]
+ports:
+  8443/tcp: 8443
+  8080/tcp: 8080
+  3478/udp: 3478
+  8880/tcp: null
+  8843/tcp: null
+ports_description:
+  8443/tcp: Web interface and API
+  8080/tcp: Device communication (inform)
+  3478/udp: STUN
+  8880/tcp: Guest portal (HTTP)
+  8843/tcp: Guest portal (HTTPS)
+options:
+  backup_history: false
+  reset_admin: ""
+schema:
+  backup_history: bool
+  reset_admin: str?
+# Stopping includes dumping the settings.
+timeout: 120
+backup: hot
+# A failure leaves this app out of the backup and reports an error, rather than saving a stale dump.
+backup_pre: /opt/unifi-standalone/bin/unifi-backup
+# Everything here can be rebuilt from the dump, or is history. Supervisor matches the end of the path.
+backup_exclude:
+  - postgres
+  - unifi/logs
+  - unifi/data/db
+  - unifi/data/restore
+  - unifi/data/firmware
+  - unifi/data/firmware.json
+  - unifi/data/uidb.json
+  # Only Network's manual backups: its auto-backups stay, as a way out in a format any Network reads.
+  - unifi/data/backup/*.unf
+  - backup/settings.pre-restore.dump
+  - backup/settings.pre-restore.dump.version

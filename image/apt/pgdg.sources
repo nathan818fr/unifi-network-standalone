@@ -1,0 +1,6 @@
+Types: deb
+URIs: https://apt-archive.postgresql.org/pub/repos/apt
+Suites: trixie-pgdg-archive
+Components: main
+Signed-By: /usr/share/postgresql-common/pgdg/pgdg.asc
+Snapshot: disable

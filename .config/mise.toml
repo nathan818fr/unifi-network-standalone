@@ -1,0 +1,49 @@
+[settings]
+lockfile = true
+
+[tools]
+go = "1"
+golangci-lint = "2"
+dprint = "0"
+jq = "1"
+shfmt = "3"
+shellcheck = "0"
+hadolint = "2"
+
+[vars]
+image = "localhost/unifi-network-standalone:test"
+
+[tasks.fmt]
+description = "Format the code, the documentation and the scripts"
+run = [
+  "cd image && golangci-lint fmt --config ../.config/golangci.yaml",
+  "dprint fmt",
+  "shfmt -i 2 -w image tests",
+]
+
+[tasks.lint]
+description = "Run golangci-lint, which also checks formatting, dprint, shfmt, shellcheck and hadolint"
+run = [
+  "cd image && golangci-lint run --config ../.config/golangci.yaml",
+  "dprint check",
+  "shfmt -i 2 -d image tests",
+  "shfmt -f image tests | xargs shellcheck -x",
+  "hadolint --config .config/hadolint.yaml image/Containerfile",
+]
+
+[tasks.test]
+description = "Run the unit tests"
+run = "cd image && go test ./..."
+
+[tasks.image]
+description = "Build the container image for this machine"
+run = "podman build --format docker -t {{vars.image}} image"
+
+[tasks.e2e]
+description = "Build the image and run its end-to-end tests: start, restart, backups, restores"
+depends = ["image"]
+run = "tests/run.sh {{vars.image}}"
+
+[tasks.check]
+description = "Run every check"
+depends = ["lint", "test", "e2e"]
