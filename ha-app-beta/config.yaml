@@ -3,7 +3,7 @@ name: UniFi Network (standalone, beta)
 description: Builds of UniFi Network (standalone) before they reach everyone. Unofficial and unsupported.
 url: https://github.com/nathan818fr/unifi-network-standalone
 # The image's tag. Written by the workflows, once the image exists.
-version: "11.0.99-build1"
+version: "11.0.99-build2"
 slug: unifi_network_standalone_beta
 stage: experimental
 image: ghcr.io/nathan818fr/unifi-network-standalone
