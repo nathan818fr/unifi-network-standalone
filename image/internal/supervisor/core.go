@@ -55,8 +55,8 @@ func (s *coreStub) answer(method, path string) (int, []byte) {
 			return http.StatusNotFound, []byte("{}")
 		}
 		return http.StatusOK, s.interfaces
-	case "/api/controllers", "/api/services":
-		// Network parses these as lists.
+	case "/api/controllers", "/api/services", "/api/ups/consoles":
+		// Network parses these as lists. There's no UPS to pair a console with.
 		return http.StatusOK, []byte("[]")
 	case "/mb/sub", "/mb/pub", "/api/info":
 		return http.StatusOK, []byte("{}")

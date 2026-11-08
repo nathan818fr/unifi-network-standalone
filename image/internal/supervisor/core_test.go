@@ -32,6 +32,7 @@ func TestAnswers(t *testing.T) {
 		{http.MethodGet, "/api/system", http.StatusOK, `{"system":true}`},
 		{http.MethodGet, "/api/controllers", http.StatusOK, `[]`},
 		{http.MethodGet, "/api/services?x=1", http.StatusOK, `[]`},
+		{http.MethodGet, "/api/ups/consoles", http.StatusOK, `[]`},
 		{http.MethodPost, "/mb/sub", http.StatusOK, `{}`},
 		{http.MethodPost, "/mb/pub", http.StatusOK, `{}`},
 		{http.MethodGet, "/api/info", http.StatusOK, `{}`},
