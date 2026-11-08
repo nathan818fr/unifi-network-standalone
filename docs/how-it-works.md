@@ -51,7 +51,8 @@ Here:       browser -> Network (port 8443, checks the login itself)
 ```
 
 Devices were never part of this: they talk to Network directly, on UniFi OS too. Adoption, inform, STUN
-and firmware don't involve core at all, which is why this setup can work.
+and firmware don't involve core at all, which is why this setup can work. One difference: a change to
+Inform Host Override, in Network's settings, takes effect at the app's next restart.
 
 ## The stand-in for core
 

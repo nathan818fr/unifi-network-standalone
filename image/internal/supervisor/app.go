@@ -96,6 +96,27 @@ func beforeAppStart(ctx context.Context) (restoring bool, err error) {
 	case changed != "UPDATE 0":
 		log.Print("unifi-standalone: turned Network's analytics setting off")
 	}
+	// With core turned off, Inform Host Override sends devices super_identity's hostname, while the
+	// settings page writes override_inform_host_location: devices would get example-domain.ui.com,
+	// or UniFi OS's container name after a restore. A change there applies at the next start.
+	host, err := store.Query(ctx, store.NetworkDatabase, `WITH changed AS (
+		UPDATE config.setting AS identity
+		SET dynamic_part = jsonb_set(identity.dynamic_part, '{hostname}',
+			mgmt.dynamic_part -> 'override_inform_host_location')
+		FROM config.setting AS mgmt
+		WHERE identity.key = 'super_identity' AND mgmt.key = 'super_mgmt'
+			AND mgmt.dynamic_part ->> 'override_inform_host' = 'true'
+			AND mgmt.dynamic_part ->> 'override_inform_host_location' <> ''
+			AND identity.dynamic_part ->> 'hostname'
+				IS DISTINCT FROM mgmt.dynamic_part ->> 'override_inform_host_location'
+		RETURNING identity.dynamic_part ->> 'hostname' AS hostname)
+		SELECT hostname FROM changed`, nil)
+	switch {
+	case err != nil:
+		log.Printf("error: could not apply Inform Host Override: %v", err)
+	case host != "":
+		log.Printf("unifi-standalone: Inform Host Override now gives devices %s", host)
+	}
 
 	pending, err := os.Stat(store.RestorePending)
 	if err != nil {

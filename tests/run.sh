@@ -126,7 +126,7 @@ function test_root_dropped() {
 }
 
 # Everything that only needs Network running shares one start. Then it prepares the next start:
-# analytics turned on, and the users as a restore from UniFi OS leaves them.
+# analytics turned on, Inform Host Override set, and the users as a restore from UniFi OS leaves them.
 function test_running() {
   title 'restart, without MongoDB'
   "$PODMAN" unshare rm -f -- "${DATA}/unifi/logs/mongod.log"
@@ -137,7 +137,7 @@ function test_running() {
   # Auto-backups run each minute from now, and are checked once the other checks are done
   local _auto_since
   _auto_since="$(mktemp)"
-  set_auto_backup '{"autobackup_enabled":true,"autobackup_cron_expr":"* * * * *"}'
+  set_management '{"autobackup_enabled":true,"autobackup_cron_expr":"* * * * *"}'
 
   check_forged_login
   check_export
@@ -147,15 +147,16 @@ function test_running() {
   check_host_ip
   check_auto_backup "$_auto_since"
   rm -f -- "$_auto_since"
-  set_auto_backup '{"autobackup_cron_expr":"30 0 1 * *"}'
+  set_management '{"autobackup_cron_expr":"30 0 1 * *"}'
   check_core_stand_in
 
-  title 'analytics and users prepared for the next start'
+  title 'settings and users prepared for the next start'
   login
   curl -ksSf -b "$COOKIES" -o /dev/null -H 'Content-Type: application/json' \
     -d '{"enable_analytics":true}' "${URL}/api/s/default/set/setting/super_mgmt"
   if [[ "$(analytics_setting)" != 'true' ]]; then fail 'could not turn the setting on'; fi
   rm -f -- "$COOKIES"
+  set_management '{"override_inform_host":true,"override_inform_host_location":"192.0.2.20"}'
   add_user other other-Pass-12345
   add_user person person-Pass-12345
   sql "DELETE FROM config.privilege WHERE admin_id IN
@@ -189,6 +190,17 @@ function test_repair_same_person() {
   if [[ "$(analytics_setting)" != 'false' ]]; then fail 'the analytics setting stays on'; fi
   rm -f -- "$COOKIES"
   printf 'ok    the analytics setting is off again\n'
+
+  # What devices are told is read from super_identity, not from what the settings page wrote
+  title 'Inform Host Override reaches the devices'
+  local _host _logs
+  _host="$(sql "SELECT dynamic_part ->> 'hostname' FROM config.setting WHERE key = 'super_identity'")"
+  if [[ "$_host" != '192.0.2.20' ]]; then fail "devices would be told ${_host}, not the override"; fi
+  _logs="$("$PODMAN" logs "$NAME" 2>&1)"
+  if [[ "$_logs" != *'Inform Host Override now gives devices 192.0.2.20'* ]]; then
+    fail 'the change was not logged'
+  fi
+  printf 'ok    devices are told the override\n'
 
   sql "DELETE FROM config.privilege
     WHERE admin_id IN (SELECT id FROM config.admin WHERE NOT is_owner)"
@@ -543,8 +555,9 @@ function analytics_setting() {
     sed -nE 's/.*"enable_analytics":(true|false).*/\1/p'
 }
 
-# usage: set_auto_backup <settings as JSON>
-function set_auto_backup() {
+# Changes settings as the settings page does.
+# usage: set_management <settings as JSON>
+function set_management() {
   login
   curl -ksSf -b "$COOKIES" -o /dev/null -H 'Content-Type: application/json' -d "$1" \
     "${URL}/api/s/default/set/setting/super_mgmt"
