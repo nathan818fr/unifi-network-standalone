@@ -60,6 +60,12 @@ func (s *coreStub) answer(method, path string) (int, []byte) {
 		return http.StatusOK, []byte("[]")
 	case "/mb/sub", "/mb/pub", "/api/info":
 		return http.StatusOK, []byte("{}")
+	case "/proxy/cloud/ztp/consoles/auto-adoptions":
+		// Devices waiting to be adopted through Ubiquiti's cloud: there is none without a cloud
+		// account. An error would log one at each start.
+		if method == http.MethodGet {
+			return http.StatusOK, []byte(`{"data":{"devices":[]}}`)
+		}
 	}
 	_, _ = fmt.Fprintf(s.log, "core stub: unexpected %s %s\n", method, path)
 	return http.StatusNotFound, []byte("{}")

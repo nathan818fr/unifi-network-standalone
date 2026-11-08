@@ -35,6 +35,8 @@ func TestAnswers(t *testing.T) {
 		{http.MethodPost, "/mb/sub", http.StatusOK, `{}`},
 		{http.MethodPost, "/mb/pub", http.StatusOK, `{}`},
 		{http.MethodGet, "/api/info", http.StatusOK, `{}`},
+		{http.MethodGet, "/proxy/cloud/ztp/consoles/auto-adoptions", http.StatusOK,
+			`{"data":{"devices":[]}}`},
 	}
 	for _, test := range tests {
 		t.Run(test.path, func(t *testing.T) {
@@ -63,6 +65,18 @@ func TestUnknownPathsAreRefusedAndLogged(t *testing.T) {
 				t.Errorf("logged %q", log)
 			}
 		})
+	}
+}
+
+// Only the list is known: writing to the cloud's list of auto-adoptions must not look like success.
+func TestAutoAdoptionsOnlyAnswersReads(t *testing.T) {
+	stub, log := newStub("")
+	got := request(stub, http.MethodPut, "/proxy/cloud/ztp/consoles/auto-adoptions")
+	if got.Code != http.StatusNotFound {
+		t.Errorf("got %d, want 404", got.Code)
+	}
+	if !strings.Contains(log.String(), "core stub: unexpected PUT") {
+		t.Errorf("logged %q", log)
 	}
 }
 
