@@ -1,0 +1,81 @@
+name: Promote
+
+# Offers the current beta to everyone: see CONTRIBUTING.md.
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+defaults:
+  run:
+    shell: bash
+
+# Never alongside a release: both push to main.
+concurrency:
+  group: release
+
+jobs:
+  promote:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # All the tags, and what they point to.
+          fetch-depth: 0
+
+      # The beta app's version, which must be fully released: a beta still being released, or one
+      # that failed, would promote settings its image doesn't have yet.
+      - name: Read the beta
+        id: beta
+        run: |
+          pending="$(.github/scripts/next-version.sh)"
+          if [[ -n "$pending" ]]; then
+            printf 'error: the beta has unreleased changes (%s): release them first\n' "$pending" >&2
+            exit 1
+          fi
+          version="$(sed -n 's/^version: "\(.*\)"$/\1/p' ha-app-beta/config.yaml)"
+          git rev-parse --quiet --verify "refs/tags/v${version}" >/dev/null
+          printf 'version=%s\n' "$version" >>"$GITHUB_OUTPUT"
+
+      - name: Log in to the registry
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Move the tags
+        env:
+          VERSION: ${{ steps.beta.outputs.version }}
+        run: |
+          network="${VERSION%-build*}"
+          docker buildx imagetools create --tag "${IMAGE}:${network}" \
+            --tag "${IMAGE}:${network%%.*}" --tag "${IMAGE}:latest" "${IMAGE}:${VERSION}"
+
+      - name: Offer it to everyone
+        env:
+          VERSION: ${{ steps.beta.outputs.version }}
+        run: |
+          .github/scripts/promote-app.sh
+          if [[ -z "$(git status --porcelain)" ]]; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all ha-app
+          git commit --message "Promote ${VERSION}"
+          git push origin HEAD:main
+
+      - name: Mark the release as stable
+        env:
+          VERSION: ${{ steps.beta.outputs.version }}
+        run: gh release edit "v${VERSION}" --prerelease=false --latest

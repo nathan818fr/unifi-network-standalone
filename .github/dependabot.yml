@@ -1,0 +1,38 @@
+version: 2
+updates:
+  - package-ecosystem: docker
+    directory: /image
+    schedule:
+      interval: daily
+    cooldown:
+      default-days: 3
+      # Debian's security fixes shouldn't wait.
+      exclude:
+        - library/debian
+    ignore:
+      # Deliberately held at the major version UniFi OS uses.
+      - dependency-name: library/mongo
+      # Network names the Java it wants: the image's build fails if it changes.
+      - dependency-name: library/eclipse-temurin
+        update-types:
+          - version-update:semver-major
+    groups:
+      debian:
+        patterns:
+          - library/debian
+      tools:
+        patterns:
+          - "*"
+
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/setup
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - "*"

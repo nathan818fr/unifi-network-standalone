@@ -23,6 +23,9 @@ Or add `https://github.com/nathan818fr/unifi-network-standalone` under **Reposit
 Install **UniFi Network (standalone)**, start it, then open the web interface. It needs a 64-bit Home
 Assistant OS, and no extra privileges.
 
+**UniFi Network (standalone, beta)** gets each build first. It is marked experimental.
+It keeps its own data: stop one app before starting the other, as they use the same ports.
+
 ### Container
 
 ```sh
@@ -37,7 +40,7 @@ Then open `https://<host>:8443`. Ports 8880 and 8843 serve the guest portal, if 
 
 To choose when to update, replace `latest`. `11.0.99` stays on that Network, with only fixes to the rest
 of the image. `11` follows Network 11, whose upgrades can migrate your data with no way back.
-`11.0.99-build1` never changes.
+`11.0.99-build1` never changes. `beta` gets each build before the others.
 
 Don't use `--network=host`: Postgres (no password) and Network's internal port would be open to
 anything running on the host, and more unauthenticated ports open to the network.

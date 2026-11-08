@@ -1,0 +1,156 @@
+name: Release
+
+# Merging to main publishes what changed in the image as a beta: see CONTRIBUTING.md.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - LICENSE
+  # For a first release, or one a failure interrupted.
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+defaults:
+  run:
+    shell: bash
+
+# One at a time, and a newer one replaces a waiting one: merges close together make one release.
+concurrency:
+  group: release
+
+jobs:
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # All the tags, and what they point to.
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup
+      - name: Lint
+        run: mise run lint
+      - name: Unit tests
+        run: mise run test
+      - name: Choose the version
+        id: version
+        run: .github/scripts/next-version.sh >>"$GITHUB_OUTPUT"
+
+  # Pushes the image it tested: a rebuild later could differ, and would ship untested.
+  test:
+    needs: check
+    if: needs.check.outputs.version != ''
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # The same Ubuntu on both, so that a failure on one architecture isn't an OS difference. Move
+        # both together to the next Ubuntu release.
+        runner: [ubuntu-26.04, ubuntu-26.04-arm]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup
+      - name: Build and test
+        run: mise run e2e
+      - name: Push this architecture
+        env:
+          TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          podman login --username "$GITHUB_ACTOR" --password-stdin -- ghcr.io <<<"$TOKEN"
+          podman push -- localhost/unifi-network-standalone:test \
+            "docker://${IMAGE}:${VERSION}-$(dpkg --print-architecture)"
+
+  # If it fails, re-run it: every step can run again.
+  publish:
+    needs: [check, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The tip, which may be newer than the commit under test, to add the version on top of it.
+          ref: main
+          fetch-depth: 0
+
+      # First: a number that went this far is never used for other content. The tag is on the tested
+      # commit, and git refuses to move it. An older run re-run must not take latest back.
+      - name: Claim the version
+        run: |
+          git tag --force "v${VERSION}" "$GITHUB_SHA"
+          git push origin "refs/tags/v${VERSION}"
+          [[ "$(git tag --list --sort=-version:refname 'v*-build*' | sed -n 1p)" == "v${VERSION}" ]]
+
+      - name: Log in to the registry
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # The tags that follow stable releases move when promoting.
+      - name: Push the tags
+        run: |
+          docker buildx imagetools create --tag "${IMAGE}:${VERSION}" --tag "${IMAGE}:beta" \
+            "${IMAGE}:${VERSION}-amd64" "${IMAGE}:${VERSION}-arm64"
+
+      # A package starts private: never offer an image that users can't pull.
+      - name: Check that anyone can pull it
+        id: public
+        run: |
+          digest="$(skopeo inspect --no-creds --format '{{.Digest}}' "docker://${IMAGE}:${VERSION}")"
+          printf 'digest=%s\n' "$digest" >>"$GITHUB_OUTPUT"
+
+      - name: Attest the image
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.public.outputs.digest }}
+          push-to-registry: true
+
+      # Only now: Home Assistant offers this version to the beta app as soon as it's on main. A merge
+      # since the checkout makes the push fail, and nothing is offered until a re-run.
+      - name: Offer it to the beta app
+        run: |
+          sed -i "s/^version: .*/version: \"${VERSION}\"/" ha-app-beta/config.yaml
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit --all --message "Release ${VERSION} as a beta"
+          git push origin HEAD:main
+
+      - name: Publish the release
+        run: |
+          gh release create "v${VERSION}" --verify-tag --prerelease --title "$VERSION" \
+            --generate-notes

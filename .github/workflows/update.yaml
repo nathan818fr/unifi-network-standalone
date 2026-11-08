@@ -1,0 +1,58 @@
+name: Update
+
+on:
+  schedule:
+    - cron: "39 22 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [network, postgres]
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Update
+        id: update
+        env:
+          COMPONENT: ${{ matrix.component }}
+        run: .github/scripts/update.sh "$COMPONENT" >>"$GITHUB_OUTPUT"
+
+      # Tests don't start by themselves on a pull request opened with GITHUB_TOKEN: without this app,
+      # they wait for "Approve workflows to run".
+      - name: Get the app's token
+        id: app
+        if: steps.update.outputs.title != '' && vars.UPDATE_APP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.UPDATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.UPDATE_APP_PRIVATE_KEY }}
+
+      - name: Open the pull request
+        if: steps.update.outputs.title != ''
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ steps.app.outputs.token || github.token }}
+          branch: update/${{ matrix.component }}
+          delete-branch: true
+          commit-message: ${{ steps.update.outputs.title }}
+          title: ${{ steps.update.outputs.title }}
+          body: |
+            Merging this publishes it as a beta. For Network, read Ubiquiti's release notes first:
+            https://community.ui.com/releases
