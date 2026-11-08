@@ -1,6 +1,7 @@
 # Managing users
 
-You manage users in Network's web interface. These are for when you can't log in as an admin.
+You manage users in Network's web interface. What follows is for when you can't log in as an admin, or
+when the page stays black after logging in (that user has no admin rights).
 
 ## On Home Assistant
 

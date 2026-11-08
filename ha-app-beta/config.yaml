@@ -14,7 +14,8 @@ startup: application
 boot: auto
 # The image has its own main process
 init: false
-# Only to read the host's address (/network/info), which devices are then told to use
+# To read the host's address (/network/info), which devices are then told to use, and to empty
+# reset_admin once applied (/addons/self/options)
 hassio_api: true
 webui: https://[HOST]:[PORT:8443]
 watchdog: tcp://[HOST]:[PORT:8443]

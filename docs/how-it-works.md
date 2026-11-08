@@ -24,11 +24,14 @@ Most of them exist for what a few access points don't need:
 
 | Process            | Role                                            | Comes from                                  |
 | ------------------ | ----------------------------------------------- | ------------------------------------------- |
-| Network            | The application, unmodified                     | Ubiquiti's package, checked by its SHA-256  |
+| Network            | The application                                 | Ubiquiti's package, checked by its SHA-256  |
 | Java               | Runs Network                                    | Temurin, the major version Network asks for |
 | Postgres           | Network's database                              | PostgreSQL's packages, a current major      |
 | `unifi-standalone` | Starts and watches the rest, stands in for core | This project                                |
-| MongoDB            | Only during the migration of an old backup      | MongoDB's 3.6, as on UniFi OS               |
+| MongoDB            | At the first start, and to migrate old backups  | MongoDB's 3.6, as on UniFi OS               |
+
+Network's code is unchanged. Two of its settings differ: its logging, with fewer debug lines, and
+one rule in its web server's settings, for a picture missing from the dashboard.
 
 `UNIFI_JAVA_HEAP` changes Java's heap (default `384M`). Most of Java's memory is outside it, so a
 lower value saves little.
@@ -38,9 +41,10 @@ lower value saves little.
 On UniFi OS, Network doesn't check logins. nginx asks core, then forwards the request on a private port,
 with a header saying who it comes from, and Network trusts that header.
 
-Network has a setting for whether core is there, `unifi.core.enabled`. With it off, as here, Network
-does what it did as a standalone application: it checks logins itself, against its own users, and answers
-on its own web port. It ignores those headers, and the private port still opens, on loopback, but answers 400.
+Network has a setting for whether core is there, `unifi.core.enabled`. With it off, as here, Network does
+what it did as a standalone application: it checks logins itself, against its own users, and answers on
+its own web port. It ignores those headers, and the private port still opens, on loopback, but answers
+400.
 
 ```text
 UniFi OS:   browser -> nginx -> Network (port 8081, trusts the header)
@@ -79,21 +83,21 @@ shows what a new version of Network newly expects from core.
 
 A factory-reset device announces itself on the local network, and a controller on that network lists it.
 With UniFi OS Server's settings, Network doesn't listen for that: a separate program does, which isn't
-included, and it couldn't hear those announcements from behind a container's bridged network anyway. Devices
-find the controller another way instead: see [adding devices](../README.md#adding-devices).
+included, and it couldn't hear those announcements from behind a container's bridged network anyway.
+Devices find the controller another way instead: see [adding devices](../README.md#adding-devices).
 
 ## The databases
 
-**Postgres** holds everything since Network 11: settings, statistics, logs. It listens on `127.0.0.1`, in
-`/data/postgres`.
+**Postgres** holds everything since Network 11: settings, statistics, logs. It listens on loopback, port
+5434, in `/data/postgres`.
 
 **MongoDB** was the database up to 10.x, so backups from those versions are in its format. Network loads
-such a backup into MongoDB, then migrates it into Postgres, as any upgrade to 11 does. Backups from 11 hold
-Postgres data and don't need it.
+such a backup into MongoDB, then migrates it into Postgres, as any upgrade to 11 does. Backups from 11
+hold Postgres data and don't need it.
 
 Network starts MongoDB itself, by running `sudo systemctl start unifi-mongodb`. The image's `sudo` is a
-small command that only does this: it starts MongoDB, or stops it and deletes its files. So it runs during
-a migration, and uses nothing the rest of the time.
+small command that only does this: it starts MongoDB, or stops it and deletes its files. So it runs at the
+first start and during a migration, and uses nothing the rest of the time.
 
 ## What happens at start
 
@@ -106,11 +110,14 @@ a migration, and uses nothing the rest of the time.
    - `is_default=false` is in its settings file. Without it, Network takes itself for a new install and lets
      anyone in as the first admin.
    - `db_migrator/version` exists. Without it, Network takes the database for a new one and wipes it, so it's
-     restored from the dump, or the start is refused.
+     put back from the one saved with the dump, or the start is refused.
+   - Inform Host Override, as the settings page shows it, is what devices are told.
    - A safety copy is saved if a restore is about to run.
-5. Network starts. If it exits on its own, it's started again, which is how it applies a restore.
-6. After a restore that left nobody able to log in, one real admin gets the rights back: see
-   [moving](moving.md#3-log-in). This is written to the logs.
+   - If nobody can log in as an admin, one real admin gets the rights back: see
+     [moving](moving.md#3-log-in). Home Assistant's **Reset an admin** is applied. Both are written to
+     the logs.
+5. Network starts. If it exits on its own, it's started again, which is how it applies a restore. Once a
+   restore is done, the users are checked again, as in step 4.
 
 On stop, the settings are saved to a dump, then Postgres stops cleanly.
 
