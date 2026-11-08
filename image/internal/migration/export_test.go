@@ -1,6 +1,8 @@
 package migration
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"io"
@@ -76,8 +78,8 @@ func TestDownload(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if string(got) != "the backup" {
-				t.Errorf("got %q", got)
+			if string(got.Backup) != "the backup" || got.InformOverrideOff {
+				t.Errorf("got %q, %+v", got.Backup, got)
 			}
 			if !fake.sawCSRF {
 				t.Error("the backup request had no CSRF token")
@@ -107,5 +109,49 @@ func TestDownloadVerifiesTheCertificate(t *testing.T) {
 	_, err := Download(context.Background(), opts)
 	if err == nil || !strings.Contains(err.Error(), "not trusted") {
 		t.Errorf("got %v", err)
+	}
+}
+
+// backupWithDatabase makes a Network backup whose database dump is this one.
+func backupWithDatabase(t *testing.T, database []byte) []byte {
+	t.Helper()
+	var compressed bytes.Buffer
+	writer := gzip.NewWriter(&compressed)
+	if _, err := writer.Write(database); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return zipOf(t, map[string]string{"version": "10.6.109\n", "db.gz": compressed.String()})
+}
+
+// Only UniFi OS keeps the override where Network here doesn't read it.
+func TestDownloadTurnsOffUniFiOSInformOverride(t *testing.T) {
+	database := bsonDocument(t, "key", "super_mgmt", "override_inform_host", true,
+		"override_inform_host_location", "192.0.2.11")
+	backup := backupWithDatabase(t, database)
+	for _, unifiOS := range []bool{true, false} {
+		t.Run(map[bool]string{true: "UniFi OS", false: "standalone"}[unifiOS], func(t *testing.T) {
+			server := httptest.NewTLSServer(&controller{unifiOS: unifiOS, backupBody: string(backup)})
+			defer server.Close()
+			got, err := Download(context.Background(), options(server.URL))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !unifiOS {
+				if got.InformOverrideOff || !bytes.Equal(got.Backup, backup) {
+					t.Errorf("a standalone controller's backup changed: %+v", got)
+				}
+				return
+			}
+			if !got.InformOverrideOff || got.InformOverrideWas != "192.0.2.11" {
+				t.Errorf("got %+v", got)
+			}
+			if !bytes.Equal(databaseOf(t, got.Backup),
+				bytes.ReplaceAll(database, informOverrideOn, informOverrideOff)) {
+				t.Error("the database is not the same with only the override turned off")
+			}
+		})
 	}
 }

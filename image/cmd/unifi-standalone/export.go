@@ -95,7 +95,8 @@ func runExport(ctx context.Context, args []string) error {
 		if err != nil {
 			return describe(options.fromConsole, err)
 		}
-		return saveBackup(converted, options)
+		noteInformOverride(converted)
+		return saveBackup(converted.Backup, options)
 	default:
 		return exportFromController(ctx, options)
 	}
@@ -116,7 +117,7 @@ func exportFromController(ctx context.Context, options exportOptions) error {
 			return fmt.Errorf("%w: set UNIFI_PASSWORD", err)
 		}
 	}
-	data, err := migration.Download(ctx, migration.DownloadOptions{
+	converted, err := migration.Download(ctx, migration.DownloadOptions{
 		URL: options.url, User: user, Password: password,
 		Insecure: options.insecure, CACert: options.cacert,
 		AskCode: func() (string, error) { return askLine(os.Stderr, "Code from your 2FA app: ") },
@@ -125,7 +126,21 @@ func exportFromController(ctx context.Context, options exportOptions) error {
 	if err != nil {
 		return err
 	}
-	return saveBackup(data, options)
+	noteInformOverride(converted)
+	return saveBackup(converted.Backup, options)
+}
+
+// noteInformOverride says when UniFi OS's Inform Host Override was turned off.
+func noteInformOverride(converted migration.Converted) {
+	if !converted.InformOverrideOff {
+		return
+	}
+	pointed := ""
+	if converted.InformOverrideWas != "" {
+		pointed = ", pointing to " + converted.InformOverrideWas
+	}
+	logExport("Inform Host Override was on" + pointed + ". Turned off: devices will use " +
+		"this controller's address. Set it again in Network's settings if you need it.")
 }
 
 // saveBackup checks a backup before it lands where it's asked to, so that a bad one never does.

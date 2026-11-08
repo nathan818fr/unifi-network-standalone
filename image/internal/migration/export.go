@@ -38,18 +38,19 @@ type DownloadOptions struct {
 	Log func(message string)
 }
 
-// Download asks a running controller, UniFi OS or standalone, for a new full backup.
-func Download(ctx context.Context, options DownloadOptions) ([]byte, error) {
+// Download asks a running controller, UniFi OS or standalone, for a new full backup. From UniFi OS,
+// its Inform Host Override is turned off, as when converting a console backup.
+func Download(ctx context.Context, options DownloadOptions) (Converted, error) {
 	client, err := newClient(options)
 	if err != nil {
-		return nil, err
+		return Converted{}, err
 	}
 	session := &session{client: client, base: strings.TrimRight(options.URL, "/")}
 
 	loginPath, kind := "/api/login", "a standalone controller"
 	isOS, err := session.isUniFiOS(ctx)
 	if err != nil {
-		return nil, err
+		return Converted{}, err
 	}
 	if isOS {
 		session.prefix = networkPrefix
@@ -57,16 +58,22 @@ func Download(ctx context.Context, options DownloadOptions) ([]byte, error) {
 	}
 	options.Log(fmt.Sprintf("this is %s, logging in as %s", kind, options.User))
 	if err := session.logIn(ctx, loginPath, options); err != nil {
-		return nil, err
+		return Converted{}, err
 	}
 
 	options.Log("asking Network for a full backup (it can take a minute)")
 	backupPath, err := session.requestBackup(ctx)
 	if err != nil {
-		return nil, err
+		return Converted{}, err
 	}
 	options.Log("downloading it")
-	return session.download(ctx, session.prefix+backupPath)
+	data, err := session.download(ctx, session.prefix+backupPath)
+	if err != nil || !isOS {
+		return Converted{Backup: data}, err
+	}
+	var converted Converted
+	converted.Backup, err = turnOffInformOverrideInBackup(data, &converted)
+	return converted, err
 }
 
 func newClient(options DownloadOptions) (*http.Client, error) {
