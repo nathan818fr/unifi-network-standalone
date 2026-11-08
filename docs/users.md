@@ -4,9 +4,9 @@ You manage users in Network's web interface. These are for when you can't log in
 
 ## On Home Assistant
 
-In the app's **Configuration**, set **Reset an admin** to a user's name or email, and restart the app.
-That user gets admin rights and a temporary password, shown in the app's **Log** tab. Once logged in,
-change the password, and empty the setting. Setting the same user again only applies after that.
+In the app's **Configuration**, set **Reset an admin** to the name you log in with, or your email, and
+restart the app. That user gets admin rights and a temporary password, shown in the app's **Log** tab.
+**Change that password once logged in.** The setting then empties itself.
 
 The same commands as in a container are also available, with an SSH app with its protection mode turned
 off:

@@ -19,7 +19,7 @@ const (
 	// PreRestoreDump is the safety copy from before a restore.
 	PreRestoreDump       = DataDir + "/backup/settings.pre-restore.dump"
 	dumpLock             = DataDir + "/backup/settings.lock"
-	homeAssistantOptions = DataDir + "/options.json"
+	HomeAssistantOptions = DataDir + "/options.json"
 )
 
 // By default history is left out, only the structure of those tables is kept: that keeps backups
@@ -118,7 +118,7 @@ type homeAssistantSettings struct {
 
 func readHomeAssistantOptions() homeAssistantSettings {
 	var settings homeAssistantSettings
-	content, err := os.ReadFile(homeAssistantOptions)
+	content, err := os.ReadFile(HomeAssistantOptions)
 	if err == nil {
 		_ = json.Unmarshal(content, &settings) // Unreadable means the same as none.
 	}

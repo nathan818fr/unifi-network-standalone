@@ -6,5 +6,5 @@ configuration:
   reset_admin:
     name: Reset an admin
     description: >-
-      If you can't log in: a user's name or email. At the next start, that user gets admin rights and
-      a temporary password, shown in the Log tab. Empty this once logged in.
+      If you can't log in: the name you log in with, or your email. At the next start, that user gets
+      admin rights and a temporary password, shown in the Log tab. This then empties itself.

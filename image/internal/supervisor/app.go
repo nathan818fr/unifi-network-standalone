@@ -125,8 +125,16 @@ func beforeAppStart(ctx context.Context) (restoring bool, err error) {
 		if err := store.RepairUsers(ctx, os.Stdout); err != nil {
 			log.Printf("error: could not check the users: %v", err)
 		}
-		if err := store.ApplyResetAdmin(ctx, os.Stdout); err != nil {
+		applied, err := store.ApplyResetAdmin(ctx, os.Stdout)
+		if err != nil {
 			log.Printf("error: %v", err)
+		}
+		if token := os.Getenv("SUPERVISOR_TOKEN"); applied && token != "" {
+			if err := emptyResetAdmin(ctx, supervisorOptions, token, store.HomeAssistantOptions); err != nil {
+				log.Printf("error: could not empty the reset_admin setting, empty it in the app's Configuration tab: %v", err)
+			} else {
+				log.Print("unifi-standalone: emptied the reset_admin setting, now used")
+			}
 		}
 		return false, nil
 	}
