@@ -1,0 +1,10 @@
+configuration:
+  backup_history:
+    name: Keep history in backups
+    description: >-
+      Also back up statistics, logs and the audit log. Backups can then grow much larger.
+  reset_admin:
+    name: Reset an admin
+    description: >-
+      If you can't log in: the name you log in with, or your email. At the next start, that user gets
+      admin rights and a temporary password, shown in the Log tab. This then empties itself.
