@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup
+      - name: Lint
+        run: mise run lint
+      - name: Unit tests
+        run: mise run test
+
+  e2e:
+    needs: lint
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # The same Ubuntu on both, so that a failure on one architecture isn't an OS difference. Move
+        # both together to the next Ubuntu release.
+        runner: [ubuntu-26.04, ubuntu-26.04-arm]
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up tools
+        uses: ./.github/actions/setup
+      - name: Build and test
+        run: mise run e2e 2>&1 | tee "${RUNNER_TEMP}/e2e.log"
+      - name: Report
+        if: always()
+        run: |
+          .github/scripts/report.sh localhost/unifi-network-standalone:test \
+            "ghcr.io/${GITHUB_REPOSITORY}:latest" "${RUNNER_TEMP}/e2e.log" >>"$GITHUB_STEP_SUMMARY"

@@ -8,6 +8,7 @@ dprint = "0"
 jq = "1"
 shfmt = "3"
 shellcheck = "0"
+actionlint = "1"
 hadolint = "2"
 
 [vars]
@@ -18,22 +19,26 @@ description = "Format the code, the documentation and the scripts"
 run = [
   "cd image && golangci-lint fmt --config ../.config/golangci.yaml",
   "dprint fmt",
-  "shfmt -i 2 -w image tests",
+  "shfmt -i 2 -w image tests .github",
 ]
 
 [tasks.lint]
-description = "Run golangci-lint, which also checks formatting, dprint, shfmt, shellcheck and hadolint"
+description = "Run golangci-lint, which also checks formatting, dprint, shfmt, shellcheck, actionlint and hadolint"
 run = [
   "cd image && golangci-lint run --config ../.config/golangci.yaml",
   "dprint check",
-  "shfmt -i 2 -d image tests",
-  "shfmt -f image tests | xargs shellcheck -x",
+  "shfmt -i 2 -d image tests .github",
+  "shfmt -f image tests .github | xargs shellcheck -x",
+  "actionlint -config-file .config/actionlint.yaml",
   "hadolint --config .config/hadolint.yaml image/Containerfile",
 ]
 
 [tasks.test]
 description = "Run the unit tests"
-run = "cd image && go test ./..."
+run = [
+  "cd image && go test ./...",
+  "tests/next-version-test.sh",
+]
 
 [tasks.image]
 description = "Build the container image for this machine"
