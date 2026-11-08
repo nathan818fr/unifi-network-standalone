@@ -87,10 +87,14 @@ func beforeAppStart(ctx context.Context) (restoring bool, err error) {
 		return false, err
 	}
 	// Network's tracer stays on if either this or analytics.enabled says so.
-	if _, err := store.Query(ctx, store.NetworkDatabase, `UPDATE config.setting
+	changed, err := store.Query(ctx, store.NetworkDatabase, `UPDATE config.setting
 		SET dynamic_part = jsonb_set(dynamic_part, '{enable_analytics}', 'false')
-		WHERE key = 'super_mgmt' AND dynamic_part ->> 'enable_analytics' = 'true'`, nil); err != nil {
+		WHERE key = 'super_mgmt' AND dynamic_part ->> 'enable_analytics' = 'true'`, nil)
+	switch {
+	case err != nil:
 		log.Printf("error: could not turn the analytics setting off: %v", err)
+	case changed != "UPDATE 0":
+		log.Print("unifi-standalone: turned Network's analytics setting off")
 	}
 
 	pending, err := os.Stat(store.RestorePending)

@@ -72,6 +72,7 @@ COPY --from=mongo /lib/*-linux-gnu/libssl.so.1.0.0 /lib/*-linux-gnu/libcrypto.so
 COPY --from=build /build/unifi-standalone /opt/unifi-standalone/bin/unifi-standalone
 COPY --from=fetch /build/out/logback.xml /opt/unifi-standalone/logback.xml
 COPY --from=fetch /build/out/core-version /opt/unifi-standalone/core-version
+COPY --from=fetch /build/out/network-version /tmp/network-version
 COPY --from=fetch /build/out/java-major /tmp/java-major
 # A build must fail if Network asks for another Java. The package's folders move out of the read-only
 # code, as its install script does.
@@ -89,6 +90,14 @@ RUN grep -q "^JAVA_VERSION=\"$(cat /tmp/java-major)\." /opt/java/release \
 
 ENV PATH=/opt/unifi-standalone/bin:/usr/lib/postgresql/${POSTGRES_MAJOR}/bin:/opt/java/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 LABEL org.opencontainers.image.source="https://github.com/nathan818fr/unifi-network-standalone"
+# What a start says it runs. Last, as the image's version changes at each release: the release
+# workflow gives it, and a local build is "dev".
+ARG IMAGE_VERSION=dev
+RUN printf 'image=%s\nnetwork=%s\npostgresql=%s\njava=%s\n' "$IMAGE_VERSION" \
+    "$(cat /tmp/network-version)" "${POSTGRES_VERSION%%-*}" \
+    "$(sed -n 's/^JAVA_VERSION="\(.*\)"$/\1/p' /opt/java/release)" >/opt/unifi-standalone/versions \
+  && rm /tmp/network-version \
+  && grep -qE '^java=[0-9]' /opt/unifi-standalone/versions
 VOLUME /data
 EXPOSE 8443/tcp 8080/tcp 8880/tcp 8843/tcp 3478/udp
 HEALTHCHECK --start-period=10m --interval=1m --timeout=10s \

@@ -68,6 +68,12 @@ function main() {
 function test_first_start() {
   title 'first start'
   start
+  local _logs
+  _logs="$("$PODMAN" logs "$NAME" 2>&1)"
+  if ! [[ "$_logs" =~ unifi-standalone\ [^\ ]+:\ Network\ [0-9.]+,\ PostgreSQL\ [0-9.]+,\ Java\ [0-9.]+ ]]; then
+    fail 'the start does not say which versions run'
+  fi
+  printf 'ok    the start says which versions run\n'
   stop
   start
   SMOKE_SETUP=true "${TESTS_DIR}/smoke.sh" "$URL"

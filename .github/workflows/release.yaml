@@ -73,6 +73,8 @@ jobs:
       - name: Set up tools
         uses: ./.github/actions/setup
       - name: Build and test
+        env:
+          IMAGE_VERSION: ${{ needs.check.outputs.version }}
         run: mise run e2e
       - name: Push this architecture
         env:

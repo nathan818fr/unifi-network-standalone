@@ -92,15 +92,23 @@ func mustJSON(value any) []byte {
 	return encoded
 }
 
-// hostIP returns the host's address, or nothing when it isn't known. It's read once per start.
-func hostIP(ctx context.Context) (string, error) {
+// hostIP returns the host's address and where it came from, or nothing when it isn't known. It's
+// read once per start.
+func hostIP(ctx context.Context) (ip, from string, err error) {
 	if ip := os.Getenv("UNIFI_HOST_IP"); ip != "" {
-		return validIPv4(ip)
+		ip, err := validIPv4(ip)
+		return ip, "UNIFI_HOST_IP", err
 	}
 	token := os.Getenv("SUPERVISOR_TOKEN")
 	if token == "" {
-		return "", nil
+		return "", "", nil
 	}
+	ip, err = homeAssistantIP(ctx, token)
+	return ip, "Home Assistant", err
+}
+
+// homeAssistantIP asks Home Assistant for the host's address.
+func homeAssistantIP(ctx context.Context, token string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, supervisorNetworkInfo, http.NoBody)

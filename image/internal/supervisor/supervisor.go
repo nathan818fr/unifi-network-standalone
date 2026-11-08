@@ -22,6 +22,8 @@ import (
 
 const (
 	appDir = "/opt/unifi"
+	// versionsFile holds what this image runs, written by its build.
+	versionsFile = "/opt/unifi-standalone/versions"
 
 	// Exit status with which the app says it must not be restarted.
 	appNoRestartStatus = 2
@@ -32,6 +34,7 @@ const (
 
 // Run runs everything until asked to stop, and returns what ended it.
 func Run() error {
+	logVersions()
 	if os.Getuid() == 0 {
 		if err := prepareAsRoot(); err != nil {
 			return err
@@ -47,13 +50,32 @@ func Run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
 
+	log.Print("unifi-standalone: starting PostgreSQL")
 	database, err := startPostgres(ctx)
 	if err != nil {
 		return err
 	}
 	err = runWithPostgres(ctx, database)
+	log.Print("unifi-standalone: stopping PostgreSQL")
 	stopPostgres(database)
+	log.Print("unifi-standalone: stopped")
 	return err
+}
+
+// logVersions says what this image runs.
+func logVersions() {
+	content, err := os.ReadFile(versionsFile)
+	if err != nil {
+		log.Printf("unifi-standalone: unknown versions: %v", err)
+		return
+	}
+	versions := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(content)), "\n") {
+		key, value, _ := strings.Cut(line, "=")
+		versions[key] = value
+	}
+	log.Printf("unifi-standalone %s: Network %s, PostgreSQL %s, Java %s",
+		versions["image"], versions["network"], versions["postgresql"], versions["java"])
 }
 
 func runWithPostgres(ctx context.Context, database *process) error {
@@ -111,21 +133,25 @@ func runAppOnce(ctx context.Context, database *process, coreFailed <-chan error)
 	if err != nil {
 		return nil, err
 	}
+	log.Print("unifi-standalone: starting Network")
+	started := time.Now()
 	app, err := startApp()
 	if err != nil {
 		return nil, err
 	}
 	// Only for this run of the app.
-	repairCtx, cancelRepair := context.WithCancel(ctx)
-	defer cancelRepair()
+	runCtx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
+	go logWhenUp(runCtx, started)
 	if restoring {
-		go repairAfterRestore(repairCtx)
+		go repairAfterRestore(runCtx)
 	}
 
 	select {
 	case <-app.done:
 		return app.err, nil
 	case <-ctx.Done():
+		log.Print("unifi-standalone: stopping Network")
 		err = nil
 	case <-database.done:
 		err = fmt.Errorf("postgres exited: %w", database.err)
@@ -152,6 +178,21 @@ func exitCode(err error) int {
 		return exited.ExitCode()
 	}
 	return 0
+}
+
+// logWhenUp says once when Network answers, and how long its start took.
+func logWhenUp(ctx context.Context, started time.Time) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second):
+		}
+		if appIsUp(ctx) {
+			log.Printf("unifi-standalone: Network is up, after %s", time.Since(started).Round(time.Second))
+			return
+		}
+	}
 }
 
 // repairAfterRestore waits for a restore to finish: the app applies it without restarting.
@@ -183,13 +224,14 @@ func prepareCoreStub(ctx context.Context) (*coreStub, error) {
 		return nil, err
 	}
 	stub := &coreStub{system: systemJSON(id, strings.TrimSpace(string(version))), log: os.Stdout}
-	ip, err := hostIP(ctx)
+	ip, from, err := hostIP(ctx)
 	switch {
 	case err != nil:
 		log.Printf("unifi-standalone: could not read the host address: %v", err)
 	case ip == "":
 		log.Printf("unifi-standalone: the host address is not known: set UNIFI_HOST_IP, or Inform Host Override")
 	default:
+		log.Printf("unifi-standalone: the host address is %s, from %s", ip, from)
 		stub.interfaces = interfacesJSON(ip)
 	}
 	return stub, nil

@@ -42,7 +42,7 @@ run = [
 
 [tasks.image]
 description = "Build the container image for this machine"
-run = "podman build --format docker -t {{vars.image}} image"
+run = "podman build --format docker --build-arg IMAGE_VERSION=${IMAGE_VERSION:-dev} -t {{vars.image}} image"
 
 [tasks.e2e]
 description = "Build the image and run its end-to-end tests: start, restart, backups, restores"

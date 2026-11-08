@@ -24,13 +24,15 @@ function fetch_unifi() {
   (cd -- "$_work" && ar x unifi.deb)
   tar -xJf "${_work}/data.tar.xz" -C "$_work" ./usr/lib/unifi
   mv -- "${_work}/usr/lib/unifi" "${OUT}/unifi"
-  # What the stand-in reports as its version: the one this Network asks for, and the Java it runs
-  # on. Without them, a build must fail: Network's own requirements have changed.
+  # What the stand-in reports as its version: the one this Network asks for, the Java it runs on,
+  # and Network's own version for the start's log. Without them, a build must fail: Network's own
+  # requirements have changed.
   local _control
   _control="$(tar -xOf "$(printf '%s\n' "${_work}"/control.tar.*)" ./control)"
   sed -nE 's/.*unifi-core \(>= ([0-9.]+)\).*/\1/p' <<<"$_control" >"${OUT}/core-version"
   sed -nE 's/.*temurin-([0-9]+)-jre.*/\1/p' <<<"$_control" >"${OUT}/java-major"
-  [[ -s "${OUT}/core-version" && -s "${OUT}/java-major" ]]
+  sed -nE 's/^Version: ([0-9.]+).*/\1/p' <<<"$_control" >"${OUT}/network-version"
+  [[ -s "${OUT}/core-version" && -s "${OUT}/java-major" && -s "${OUT}/network-version" ]]
   rm -rf -- "$_work"
 }
 
