@@ -11,6 +11,7 @@ function main() {
   mkdir -p -- "$OUT"
   fetch_unifi
   make_logging_config
+  add_console_picture
 }
 
 ### Steps
@@ -41,6 +42,24 @@ function make_logging_config() {
   unzip -p "${OUT}/unifi/lib/ace.jar" BOOT-INF/classes/logback.xml |
     sed -E 's|<logger name="tasks" level="DEBUG"|<logger name="tasks" level="INFO"|' >"$_config"
   grep -q '<logger name="tasks" level="INFO"' "$_config"
+}
+
+# With core turned off, Network never loads the description of its console, and its dashboard asks for
+# a picture at an address built from nothing. One rule of ours, first among Network's own, answers it
+# with Network's own picture of a self-hosted Network server. Its file name holds a hash that changes
+# with releases. A build must fail if a new version changes what this edits.
+function add_console_picture() {
+  local _root="${OUT}/unifi/webapps/ROOT" _picture
+  _picture="$(cd -- "$_root" && find app-unifi/react/images/uidb \
+    -name '94584a8c-d5c9-4f61-8019-c7457e262803_nopadding_*_96.png')"
+  if [[ -z "$_picture" || "$_picture" == *$'\n'* ]]; then
+    printf 'error: not one picture of a self-hosted Network server: %s\n' "${_picture:-none}" >&2
+    return 1
+  fi
+  local _rules="${_root}/WEB-INF/urlrewrite.xml"
+  [[ "$(head -n 1 -- "$_rules")" == '<urlrewrite>' ]]
+  sed -i "1a\\    <rule>\\n        <from>^/manage/undefined/ui_topology_fallback_undefined\\\\.png\$</from>\\n        <to last=\"true\">/${_picture}</to>\\n    </rule>" "$_rules"
+  grep -qF "<to last=\"true\">/${_picture}</to>" "$_rules"
 }
 
 ### Helpers
