@@ -177,7 +177,7 @@ function test_repair_same_person() {
   local _record
   _record="$(log_size access-repair.log)"
   start
-  if ! can_manage smoke-admin 'person-Pass-12345'; then fail 'the same person can not manage'; fi
+  expect_manage smoke-admin 'person-Pass-12345' 'the same person can not manage'
   if can_manage other 'other-Pass-12345'; then fail 'an unrelated user got rights'; fi
   printf 'ok    only that user got rights, and it can manage\n'
   if ! log_added access-repair.log "$_record" 'gave admin rights'; then
@@ -216,7 +216,7 @@ function test_repair_owner_only() {
   local _password
   _password="$(temporary_password)"
   if [[ -z "$_password" ]]; then fail 'no temporary password in the log'; fi
-  if ! can_manage smoke-admin "$_password"; then fail 'the temporary password gives no access'; fi
+  expect_manage smoke-admin "$_password" 'the temporary password gives no access'
   printf 'ok    the temporary password gives access\n'
   if log_has access-repair.log "$_password"; then fail 'the password is in the permanent record'; fi
   printf 'ok    the password is not in the permanent record\n'
@@ -232,10 +232,10 @@ function test_reset_admin() {
   local _password
   _password="$(temporary_password)"
   if [[ -z "$_password" ]]; then fail 'no temporary password in the log'; fi
-  if ! can_manage smoke-admin "$_password"; then fail 'the temporary password gives no access'; fi
+  expect_manage smoke-admin "$_password" 'the temporary password gives no access'
   stop
   start
-  if ! can_manage smoke-admin "$_password"; then fail 'a restart reset the password again'; fi
+  expect_manage smoke-admin "$_password" 'a restart reset the password again'
   printf 'ok    it resets once, even though the setting stays\n'
   users set-password smoke-admin <<<"$ADMIN_PASSWORD"
   "$PODMAN" unshare rm -f -- "$_options"
@@ -382,7 +382,7 @@ function check_users() {
     WHERE admin_id = (SELECT id FROM config.admin WHERE name = 'limited')"
   if can_manage limited limited-Pass-12345; then fail 'the setup of this test is wrong'; fi
   users grant-admin limited --yes
-  if ! can_manage limited limited-Pass-12345; then fail 'grant-admin gave no access'; fi
+  expect_manage limited limited-Pass-12345 'grant-admin gave no access'
   printf 'ok    grant-admin gives access\n'
   sql "DELETE FROM config.privilege
     WHERE admin_id = (SELECT id FROM config.admin WHERE name = 'limited')"
@@ -522,16 +522,33 @@ function can_log_in() {
 # More than a login: without rights on sites, the web interface shows a black page after it.
 # usage: can_manage <name> <password>
 function can_manage() {
-  local _cookies _status
+  [[ "$(manage_statuses "$1" "$2")" == '200 200' ]]
+}
+
+# usage: expect_manage <name> <password> <failure message>
+function expect_manage() {
+  local _statuses
+  _statuses="$(manage_statuses "$1" "$2")"
+  if [[ "$_statuses" != '200 200' ]]; then
+    fail "${3} (login ${_statuses% *}, then /v2/api/info ${_statuses#* })"
+  fi
+}
+
+# Prints the statuses of a login and of the page the web interface reads after it, such as
+# "200 403", or "401 -" when the login failed.
+# usage: manage_statuses <name> <password>
+function manage_statuses() {
+  local _cookies _login _info='-'
   _cookies="$(mktemp)"
-  _status="$(curl -ksS -c "$_cookies" -o /dev/null -w '%{http_code}' \
+  _login="$(curl -ksS -c "$_cookies" -o /dev/null -w '%{http_code}' \
     -H 'Content-Type: application/json' \
-    -d "{\"username\":\"$1\",\"password\":\"$2\"}" "${URL}/api/login")"
-  if [[ "$_status" == '200' ]]; then
-    _status="$(curl -ksS -b "$_cookies" -o /dev/null -w '%{http_code}' "${URL}/v2/api/info")"
+    -d "{\"username\":\"$1\",\"password\":\"$2\"}" "${URL}/api/login" || true)"
+  if [[ "$_login" == '200' ]]; then
+    _info="$(curl -ksS -b "$_cookies" -o /dev/null -w '%{http_code}' "${URL}/v2/api/info" ||
+      true)"
   fi
   rm -f -- "$_cookies"
-  [[ "$_status" == '200' ]]
+  printf '%s %s\n' "$_login" "$_info"
 }
 
 # usage: expect_status <status> <curl arguments>...
