@@ -1,7 +1,7 @@
 # UniFi Network as UniFi OS Server starts it, without its other services: the app, a small stand-in
 # for unifi-core, Java, Postgres and (for migrations) MongoDB.
 
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27.3@sha256:e519d3b0a5b285e5aa53ab9eef02bc6bbb9cb04608389b743a136a9ce75f0d1e AS build
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.27.4@sha256:205c7636d74e0ffbe3d007162df7d74f859f5a8c8322dfb9f907977686c126cf AS build
 ARG TARGETARCH
 WORKDIR /src
 COPY go.mod ./
@@ -36,7 +36,7 @@ RUN base="$(sed -nE 's|^# http://snapshot\.debian\.org/archive/debian/([0-9T]+Z)
   && apt-get install -y --no-install-recommends binutils ca-certificates curl unzip xz-utils \
   && /build/fetch.sh
 
-FROM docker.io/library/eclipse-temurin:25.0.5_8-jre@sha256:ecdc0adb37bde1a281c4d245a3cd535004b1fc8322d560f5b09463b248c81df0 AS java
+FROM docker.io/library/eclipse-temurin:25.0.5_8-jre@sha256:945247f9d092703e0c6be92243ef3c51640229e23ab34d353c8dcdc73e6cd4e6 AS java
 
 # Same major version as UniFi OS, only used to migrate old backups: never reachable from outside, and
 # its build for arm64 needs this old OpenSSL, which Debian 13 no longer has. 5.0 and later can't run
