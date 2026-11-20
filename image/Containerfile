@@ -47,8 +47,8 @@ FROM docker.io/library/debian:trixie-20261104-slim@sha256:a72b4433de1cf7d6bae0c4
 ARG POSTGRES_MAJOR=18
 # PGDG's packages aren't in Debian's snapshots. All of these must move together, and libpq5 would
 # otherwise follow PGDG's next major version.
-ARG POSTGRES_VERSION=18.7-1.pgdg13+2
-ARG POSTGRES_COMMON_VERSION=295.pgdg13+1
+ARG POSTGRES_VERSION=18.7-1.pgdg13+5
+ARG POSTGRES_COMMON_VERSION=297.pgdg13+1
 COPY --from=fetch /etc/apt/apt.conf.d/99build /etc/apt/apt.conf.d/99build
 COPY --from=fetch /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY apt/pgdg.asc /usr/share/postgresql-common/pgdg/pgdg.asc
