@@ -198,7 +198,8 @@ func (s *session) download(ctx context.Context, path string) ([]byte, error) {
 	return body, nil
 }
 
-// do sends a request. An answer of any status isn't an error: only having no answer is.
+// do sends a request. An answer of any status isn't an error, except 503: Network gives it to every
+// request while it makes a backup, and the reason to give is then the same whatever the request.
 func (s *session) do(ctx context.Context, method, path string, body []byte, timeout time.Duration) (int, http.Header, []byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -217,6 +218,9 @@ func (s *session) do(ctx context.Context, method, path string, body []byte, time
 		return 0, nil, nil, explain(err)
 	}
 	defer func() { _ = response.Body.Close() }()
+	if response.StatusCode == http.StatusServiceUnavailable {
+		return 0, nil, nil, errors.New("the controller answered 503: Network is busy, most likely making a backup. Try again in a minute")
+	}
 	content, err := io.ReadAll(response.Body)
 	if err != nil {
 		return 0, nil, nil, fmt.Errorf("reading the answer of %s: %w", path, err)

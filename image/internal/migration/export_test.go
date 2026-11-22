@@ -15,6 +15,7 @@ import (
 // controller is a fake of what this package uses, on UniFi OS or standalone.
 type controller struct {
 	unifiOS    bool
+	busy       bool
 	needsCode  bool
 	sawCSRF    bool
 	sawCode    string
@@ -25,6 +26,10 @@ func (c *controller) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	prefix, loginPath := "", "/api/login"
 	if c.unifiOS {
 		prefix, loginPath = networkPrefix, "/api/auth/login"
+	}
+	if c.busy {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
 	}
 	switch r.URL.Path {
 	case "/api/system":
@@ -97,6 +102,17 @@ func TestDownloadAsksForTheCode(t *testing.T) {
 	}
 	if fake.sawCode != "123456" {
 		t.Errorf("sent the code %q", fake.sawCode)
+	}
+}
+
+// While Network makes a backup it refuses every request, the login too, which must not look like a
+// wrong account.
+func TestDownloadWhileNetworkIsBusy(t *testing.T) {
+	server := httptest.NewTLSServer(&controller{busy: true})
+	defer server.Close()
+	_, err := Download(context.Background(), options(server.URL))
+	if err == nil || !strings.Contains(err.Error(), "Network is busy") {
+		t.Errorf("got %v", err)
 	}
 }
 
