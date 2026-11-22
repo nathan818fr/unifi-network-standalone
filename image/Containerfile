@@ -13,9 +13,9 @@ RUN CGO_ENABLED=0 GOARCH=$TARGETARCH go build -trimpath -ldflags='-s -w' \
 # Downloads run natively, whatever the target architecture.
 FROM --platform=$BUILDPLATFORM docker.io/library/debian:trixie-20261104-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS fetch
 # Ubiquiti's feed lists the same .deb under uos-deb13-amd64 and uos-deb13-arm64.
-ARG UNIFI_VERSION=11.0.103
-ARG UNIFI_DEB_URL=https://fw-download.ubnt.com/data/unifi/f8b4-uos-deb13-amd64-11.0.103-37274-1-c4c65f22-61aa-4aab-a5bf-a5bd86b122b5.deb
-ARG UNIFI_DEB_SHA256=6722bb7a19fa6c129d63c65fc38c0b3d4263742f344c35c0f88470ecdb9888c4
+ARG UNIFI_VERSION=11.0.104
+ARG UNIFI_DEB_URL=https://fw-download.ubnt.com/data/unifi/6a2b-uos-deb13-amd64-11.0.104-37279-1-8369db7e-bc57-520b-b8be-fbdf9b734bda.deb
+ARG UNIFI_DEB_SHA256=bbbd07c092fac8ae03517f8304fee3c1cddc3a8a6dccd540ad60305c548f85dd
 # A newer Debian snapshot than the base image's, such as 20261112T000000Z, for a fix that can't wait
 # for Debian's next base image. It stops mattering once the base image is newer.
 ARG DEBIAN_SNAPSHOT_MIN=
