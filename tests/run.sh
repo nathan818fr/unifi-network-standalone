@@ -134,20 +134,13 @@ function test_running() {
   "${TESTS_DIR}/smoke.sh" "$URL"
   if "$PODMAN" unshare test -e "${DATA}/unifi/logs/mongod.log"; then fail 'MongoDB was started'; fi
 
-  # Auto-backups run each minute from now, and are checked once the other checks are done
-  local _auto_since
-  _auto_since="$(mktemp)"
-  set_management '{"autobackup_enabled":true,"autobackup_cron_expr":"* * * * *"}'
-
+  check_auto_backup
   check_forged_login
   check_export
   check_users
   check_backup_command
   check_backup_history
   check_host_ip
-  check_auto_backup "$_auto_since"
-  rm -f -- "$_auto_since"
-  set_management '{"autobackup_cron_expr":"30 0 1 * *"}'
   check_core_stand_in
 
   title 'settings and users prepared for the next start'
@@ -446,18 +439,44 @@ function check_host_ip() {
 
 # Home Assistant's backups keep these as a way out: one must really appear, and pass the check. Only
 # one written since this test turned them on counts.
-# usage: check_auto_backup <file older than the auto-backups to count>
+# While Network makes a backup, it answers 503 to every request: so only one, at the next minute
+# with 20 seconds to spare, waited for before the other checks.
 function check_auto_backup() {
   title 'auto-backup'
-  local _copy _waited=0
+  local _since _copy _at _time
+  _since="$(mktemp)"
   _copy="$(mktemp -d)"
-  until auto_backup_is_valid "$1" "${_copy}/auto.unf"; do
-    if [[ "$_waited" -ge 150 ]]; then fail 'no valid auto-backup appeared'; fi
+  _at=$((($(date +%s) + 20 + 59) / 60 * 60))
+  _time="$(date -u -d "@${_at}" +%H:%M)"
+  set_management "{\"autobackup_enabled\":true,\"autobackup_timezone\":\"UTC\",
+    \"autobackup_cron_expr\":\"$(date -u -d "@${_at}" '+%-M %-H %-d %-m') *\"}"
+  printf 'one auto-backup set for %s UTC\n' "$_time"
+  until auto_backup_is_valid "$_since" "${_copy}/auto.unf"; do
+    if [[ "$(date +%s)" -gt $((_at + 90)) ]]; then
+      "$PODMAN" unshare grep -i backup -- "${DATA}/unifi/logs/server.log" | tail -n 20 >&2 || true
+      if [[ -s "${_copy}/auto.unf" ]]; then
+        "${TOOLS}/unifi-export" --check "${_copy}/auto.unf" || true
+      fi
+      fail "no valid auto-backup 90 s after the one set for ${_time} UTC"
+    fi
     sleep 5
-    _waited=$((_waited + 5))
   done
-  rm -rf -- "$_copy"
+  rm -rf -- "$_copy" "$_since"
   printf 'ok    an auto-backup appeared, and passes the check\n'
+  wait_not_busy
+}
+
+# The backup's file appears before Network ends the backup.
+function wait_not_busy() {
+  local _start="$SECONDS" _busy=false _url="${URL}/api/self"
+  until [[ "$(curl -ksS -m 5 -o /dev/null -w '%{http_code}' "$_url" || true)" != '503' ]]; do
+    if [[ "$((SECONDS - _start))" -ge 120 ]]; then fail 'Network stayed busy after the backup'; fi
+    _busy=true
+    sleep 1
+  done
+  if [[ "$_busy" == 'true' ]]; then
+    printf 'Network stayed busy about %s s after the file appeared\n' "$((SECONDS - _start))"
+  fi
 }
 
 # Network's watchdog of core's gRPC starts after 30 seconds, then logs an error every 10. It asks
