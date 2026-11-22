@@ -72,7 +72,14 @@ function cmd_postgres() {
   fi
   set_arg POSTGRES_VERSION "$version"
   set_arg POSTGRES_COMMON_VERSION "$common"
-  printf 'title=Update PostgreSQL to %s\n' "${version%%-*}"
+  # A title that differs from the last update's, whichever part moved
+  if [[ "${version%%-*}" != "${current_version%%-*}" ]]; then
+    printf 'title=Update PostgreSQL to %s\n' "${version%%-*}"
+  elif [[ "$version" != "$current_version" ]]; then
+    printf 'title=Update PostgreSQL packages to %s\n' "$version"
+  else
+    printf 'title=Update postgresql-common to %s\n' "$common"
+  fi
 }
 
 ### Helpers
