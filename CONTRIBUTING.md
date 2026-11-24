@@ -49,8 +49,8 @@ app's version: Home Assistant wouldn't see the next one as an update.
 
 Every version is pinned in `image/Containerfile`: images by tag and digest, PostgreSQL's packages by
 version. Debian's other packages are frozen at the date of the base image, so its digest pins them too.
-Dependabot updates the images, and `.github/scripts/update.sh` updates Network and PostgreSQL. All of
-them open pull requests.
+Dependabot updates the images and the Actions on the 1st of each month, and `.github/scripts/update.sh`
+updates Network and PostgreSQL each day. All of them open pull requests.
 
 Merging one publishes a beta, if it changes `image` or `ha-app-beta`: the workflow tests the image on
 both architectures, pushes what it tested, and only then writes `version` in `ha-app-beta/config.yaml`,

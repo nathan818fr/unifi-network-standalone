@@ -2,8 +2,10 @@ version: 2
 updates:
   - package-ecosystem: docker
     directory: /image
+    # Monthly, like the Actions: one day to review them all. DEBIAN_SNAPSHOT_MIN in the Containerfile
+    # is for a security fix that can't wait.
     schedule:
-      interval: daily
+      interval: monthly
     cooldown:
       default-days: 3
       # Debian's security fixes shouldn't wait.
