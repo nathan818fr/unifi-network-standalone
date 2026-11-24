@@ -11,7 +11,7 @@ RUN CGO_ENABLED=0 GOARCH=$TARGETARCH go build -trimpath -ldflags='-s -w' \
   -o /build/unifi-standalone ./cmd/unifi-standalone
 
 # Downloads run natively, whatever the target architecture.
-FROM --platform=$BUILDPLATFORM docker.io/library/debian:trixie-20261104-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2 AS fetch
+FROM --platform=$BUILDPLATFORM docker.io/library/debian:trixie-20261123-slim@sha256:8aa5a7bf5a1955bddbe7d74fcdd0b91ab30e74362a8b73af672b0481b35b44a0 AS fetch
 # Ubiquiti's feed lists the same .deb under uos-deb13-amd64 and uos-deb13-arm64.
 ARG UNIFI_VERSION=11.0.104
 ARG UNIFI_DEB_URL=https://fw-download.ubnt.com/data/unifi/6a2b-uos-deb13-amd64-11.0.104-37279-1-8369db7e-bc57-520b-b8be-fbdf9b734bda.deb
@@ -43,7 +43,7 @@ FROM docker.io/library/eclipse-temurin:25.0.5_8-jre@sha256:945247f9d092703e0c6be
 # on a Raspberry Pi 4.
 FROM docker.io/library/mongo:3.6.23@sha256:146c1fd999a660e697aac40bc6da842b005c7868232eb0b7d8996c8f3545b05d AS mongo
 
-FROM docker.io/library/debian:trixie-20261104-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
+FROM docker.io/library/debian:trixie-20261123-slim@sha256:8aa5a7bf5a1955bddbe7d74fcdd0b91ab30e74362a8b73af672b0481b35b44a0
 ARG POSTGRES_MAJOR=18
 # PGDG's packages aren't in Debian's snapshots. All of these must move together, and libpq5 would
 # otherwise follow PGDG's next major version.
